@@ -9,3 +9,5 @@ $ pnpm start
 default proxy port: 3333
 
 default target port: 3000
+
+![](./diagram.png)
