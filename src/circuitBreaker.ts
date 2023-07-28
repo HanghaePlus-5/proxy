@@ -31,7 +31,7 @@ type ApiState = {
 }
 
 export class CircuitBreaker {
-  private readonly FAIL_THRESHOLD = 3;
+  private readonly FAIL_THRESHOLD = 2;
   private readonly COOLDOWN = 5000;
 
   private readonly endpointMap: Map<string, ApiState>;
@@ -59,6 +59,7 @@ export class CircuitBreaker {
     if (state === undefined) return;
 
     state.failCount += 1;
+    console.log(`${endpoint} fail count: ${state.failCount}`);
     if (state.failCount > this.FAIL_THRESHOLD) {
       console.log(`${endpoint} fail threshold reached. ${state.status} -> OPEN`);
       state.status = CircuitBreakerStatus.OPEN;
@@ -80,15 +81,15 @@ export class CircuitBreaker {
     if (state.status === CircuitBreakerStatus.CLOSE) {
       return true;
     }
-    console.log(`${endpoint} is not available. status: ${state.status}`);
 
     const now = Date.now();
-    if (state.nextTry <= now && state.status !== CircuitBreakerStatus.HALF_OPEN) {
+    console.log(`${endpoint} is not available. next try: ${state.nextTry <= now}. status: ${state.status}`);
+    if (state.nextTry <= now && state.status === CircuitBreakerStatus.OPEN) {
       state.status = CircuitBreakerStatus.HALF_OPEN;
-      console.log(`${endpoint} is not available. OPEN -> HALF_OPEN`);
+      state.nextTry = now + this.COOLDOWN;
+      console.log(`${endpoint} OPEN -> HALF_OPEN`);
       return true;
     }
-    console.log(`${endpoint} is not available. next try: ${state.nextTry}`);
 
     return false;
   }

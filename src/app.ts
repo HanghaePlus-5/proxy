@@ -7,24 +7,28 @@ const circuitBreaker = new CircuitBreaker();
 
 const PORT = 3333;
 const API_SERVICE_URL = 'http://localhost:3000';
+const TIMEOUT = 5000;
 
 const proxy = createProxyMiddleware({
   target: API_SERVICE_URL,
   changeOrigin: true,
-  selfHandleResponse: false,
-  proxyTimeout: 2000,
+  selfHandleResponse: true,
+  proxyTimeout: TIMEOUT,
+  logLevel: 'silent',
   onProxyReq: (proxyReq, req, res) => {
-    console.log('Proxy Request Interceptor', proxyReq.method, proxyReq.path);
+    // console.log('Proxy Request Interceptor', proxyReq.method, proxyReq.path);
     const isAvailable = circuitBreaker.checkRequest(req);
 
     if (!isAvailable) {
-      console.log('Service unavailable');
-      proxyReq.destroy();
+      console.log(`${req.method}:${req.url} Service Unavailable Try Again Later`);
+      res.sendStatus(429);
+      // proxyReq.destroy();
     }
+
+    return proxyReq;
   },
   onProxyRes: (proxyRes, req, res) => {
-    console.log('Proxy Response Interceptor', proxyRes.method, proxyRes.url, proxyRes.statusCode);
-
+    // console.log(`Proxy Response Interceptor ${req.method}:${req.url} ${proxyRes.statusCode}`);
     const endpoint = `${req.method}:${req.url}`;
     const statusCode = proxyRes.statusCode || 500;
     if (statusCode >= 400) {
@@ -32,13 +36,22 @@ const proxy = createProxyMiddleware({
     } else {
       circuitBreaker.onSuccess(endpoint);
     }
+
+    if (!res.headersSent) {
+      res.statusCode = statusCode || 500;
+      Object.entries(proxyRes.headers).forEach(([key, value]) => {
+        res.setHeader(key, value as string);
+      });
+    }
+    proxyRes.pipe(res);
   },
   onError: (err, req, res) => {
     console.log('Proxy Error Interceptor', err.message, req.destroyed);
     const endpoint = `${req.method}:${req.url}`;
-    if (req.destroyed) circuitBreaker.onFailure(endpoint);
-    res.end('Service unavailable');
-  }
+    circuitBreaker.onFailure(endpoint);
+    res.sendStatus(res.statusCode || 500);
+  },
+  
 });
 
 app.use('/api', proxy);
